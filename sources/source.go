@@ -1,5 +1,5 @@
 package sources 
 
 type Source interface {
-	SaveImages(destination string) error
+	GetImageLinks() ([]string, error)
 }

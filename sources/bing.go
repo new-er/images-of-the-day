@@ -6,10 +6,39 @@ import (
 	"io"
 	"net/http"
 	"os"
+
+	"github.com/gocolly/colly"
 )
 
 type Bing struct { 
 
+}
+
+func (b Bing) GetImageLinks() ([]string, error) {
+	c := colly.NewCollector()
+	var imageLinks []string
+	var errs []error
+
+	c.OnResponse(func(r *colly.Response) {
+		bingResponse := bingResponse{}
+		err := json.Unmarshal(r.Body, &bingResponse)
+		if err != nil {
+			errs = append(errs, err)
+			return
+		}
+		for _, image := range bingResponse.Images {
+			imageLinks = append(imageLinks, "https://www.bing.com"+image.URL)
+		}
+	})
+
+	err := c.Visit("https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1")
+	if err != nil {
+		return nil, err
+	}
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
+	}
+	return imageLinks, nil
 }
 
 func (b Bing) SaveImages(destination string) error {

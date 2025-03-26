@@ -7,9 +7,38 @@ import (
 	"io"
 	"net/http"
 	"os"
+
+	"github.com/gocolly/colly"
 )
 
 type Nasa struct {
+}
+
+func (u Nasa) GetImageLinks() ([]string, error) {
+	c := colly.NewCollector()
+	var imageLinks []string
+	var errs []error
+
+	c.OnResponse(func(r *colly.Response) {
+		nasaResponse := nasaResponse{}
+		err := xml.Unmarshal(r.Body, &nasaResponse)
+		if err != nil {
+			errs = append(errs, err)
+			return
+		}
+		for _, item := range nasaResponse.Channel.Items {
+			imageLinks = append(imageLinks, item.Enclosure.URL)
+		}
+	})
+
+	err := c.Visit("https://www.nasa.gov/rss/dyn/lg_image_of_the_day.rss")
+	if err != nil {
+		return nil, err
+	}
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
+	}
+	return imageLinks, nil
 }
 
 func (u Nasa) SaveImages(destination string) error {
@@ -18,7 +47,7 @@ func (u Nasa) SaveImages(destination string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	defer resp.Body.Close()
 
 	nasaResponse := nasaResponse{}
@@ -55,7 +84,6 @@ func (u Nasa) SaveImages(destination string) error {
 
 	return nil
 }
-
 
 type nasaResponse struct {
 	Channel channel `xml:"channel"`

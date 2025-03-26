@@ -1,15 +1,38 @@
 package sources
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/gocolly/colly"
 )
 
 type Epod struct {
+}
+
+func (e Epod) GetImageLinks() ([]string, error) {
+	c := colly.NewCollector()
+	var imageLinks []string
+	var errs []error
+
+	c.OnHTML("a", func(e *colly.HTMLElement) {
+		if e.Attr("class") == "asset-img-link" {
+			imageLinks = append(imageLinks, e.Attr("href"))
+		}
+	})
+	err := c.Visit("https://epod.usra.edu/")
+	if err != nil {
+		return nil, err
+	}
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
+	}
+	return imageLinks, nil
 }
 
 func (e Epod) SaveImages(destination string) error {

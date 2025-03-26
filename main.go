@@ -7,18 +7,21 @@ import (
 func main() {
 	sources := []sources.Source{
 		sources.Bing{},
-		sources.Nasa{},
+		//sources.Nasa{},
 		sources.Apod{},
 		sources.EarthObservatory{},
-		//sources.Epod{},
+		sources.Epod{},
 	}
 
 	destination := "/home/neuer/Downloads/imagesoftheday"
 
 	for _, source := range sources {
-		err := source.SaveImages(destination)
+		links, err := source.GetImageLinks()
 		if err != nil {
-			print(err.Error())
+			println(err.Error())
+		}
+		for _, link := range links {
+			println("Downloading " + link + " to " + destination)
 		}
 	}
 }
