@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	destinationDir  string
-	downloadSources []sources.Source
+	destinationDir string
+	sourceArgs     []string
 )
 
 var downloadCmd = &cobra.Command{
@@ -24,38 +24,46 @@ var downloadCmd = &cobra.Command{
 		run()
 	},
 }
+
 func init() {
-	destinationDir = *downloadCmd.Flags().StringP(
+	downloadCmd.Flags().StringVarP(
+		&destinationDir,
 		"destination",
 		"d",
 		"~/Pictures",
 		"Destination directory for downloaded images")
 
-	sourcesArgs := downloadCmd.Flags().StringSliceP(
+	downloadCmd.Flags().StringSliceVarP(
+		&sourceArgs,
 		"sources",
 		"s",
 		[]string{"bing", "nasa", "apod", "earth-observatory", "epod"},
 		"Sources to download images from")
-	for _, source := range *sourcesArgs {
-		switch source {
-		case "bing":
-			downloadSources = append(downloadSources, sources.Bing{})
-		case "nasa":
-			downloadSources = append(downloadSources, sources.Nasa{})
-		case "apod":
-			downloadSources = append(downloadSources, sources.Apod{})
-		case "earth-observatory":
-			downloadSources = append(downloadSources, sources.EarthObservatory{})
-		case "epod":
-			downloadSources = append(downloadSources, sources.Epod{})
-		}
-	}
 }
 
 func run() {
-	date := time.Now().Format("2006-01-02")
+	s := []sources.Source{}
+	for _, source := range sourceArgs {
+		switch source {
+		case "bing":
+			s = append(s, sources.Bing{})
+		case "nasa":
+			s = append(s, sources.Nasa{})
+		case "apod":
+			s = append(s, sources.Apod{})
+		case "earth-observatory":
+			s = append(s, sources.EarthObservatory{})
+		case "epod":
+			s = append(s, sources.Epod{})
+		}
+	}
 
-	for _, source := range downloadSources {
+	date := time.Now().Format("2006-01-02")
+	if _, err := os.Stat(destinationDir); os.IsNotExist(err) {
+		os.MkdirAll(destinationDir, os.ModePerm)
+	}
+
+	for _, source := range s {
 		links, err := source.GetImageLinks()
 		if err != nil {
 			println(err.Error())
