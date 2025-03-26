@@ -10,11 +10,17 @@ import (
 	"regexp"
 	"strings"
 
+	"slices"
+
 	"github.com/PuerkitoBio/goquery"
 	"github.com/gocolly/colly"
 )
 
 type EarthObservatory struct {
+}
+
+func (e EarthObservatory) GetName() string {
+	return "EarthObservatory"
 }
 
 func (e EarthObservatory) GetImageLinks() ([]string, error) {
@@ -44,6 +50,10 @@ func (e EarthObservatory) GetImageLinks() ([]string, error) {
 						val, exists := s.Attr("href")
 						if !exists {
 							errs = append(errs, errors.New("href attribute not found"))
+							return
+						}
+
+						if slices.Contains(imageLinks, val) {
 							return
 						}
 						imageLinks = append(imageLinks, val)

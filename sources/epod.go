@@ -15,6 +15,10 @@ import (
 type Epod struct {
 }
 
+func (e Epod) GetName() string {
+	return "Epod"
+}
+
 func (e Epod) GetImageLinks() ([]string, error) {
 	c := colly.NewCollector()
 	var imageLinks []string

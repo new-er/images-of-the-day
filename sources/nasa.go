@@ -14,6 +14,10 @@ import (
 type Nasa struct {
 }
 
+func (u Nasa) GetName() string {
+	return "Nasa"
+}
+
 func (u Nasa) GetImageLinks() ([]string, error) {
 	c := colly.NewCollector()
 	var imageLinks []string

@@ -14,6 +14,10 @@ type Bing struct {
 
 }
 
+func (b Bing) GetName() string {
+	return "Bing"
+}
+
 func (b Bing) GetImageLinks() ([]string, error) {
 	c := colly.NewCollector()
 	var imageLinks []string

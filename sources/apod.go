@@ -14,6 +14,10 @@ import (
 type Apod struct {
 }
 
+func (a Apod) GetName() string {
+	return "Apod"
+}
+
 func (a Apod) GetImageLinks() ([]string, error) {
 	l := []string{}
 	c := colly.NewCollector()
