@@ -24,7 +24,7 @@ func (e EarthObservatory) GetName() string {
 }
 
 func (e EarthObservatory) GetImageLinks() ([]string, error) {
-	c := colly.NewCollector()
+	c := newCollector()
 	var imageLinks []string
 	var errs []error
 

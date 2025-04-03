@@ -20,7 +20,7 @@ func (e Epod) GetName() string {
 }
 
 func (e Epod) GetImageLinks() ([]string, error) {
-	c := colly.NewCollector()
+	c := newCollector()
 	var imageLinks []string
 	var errs []error
 

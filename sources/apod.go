@@ -19,9 +19,8 @@ func (a Apod) GetName() string {
 }
 
 func (a Apod) GetImageLinks() ([]string, error) {
+	c := newCollector()
 	l := []string{}
-	c := colly.NewCollector()
-
 	c.OnHTML("center", func(e *colly.HTMLElement) {
 		hasHeader := false
 		e.DOM.ChildrenFiltered("h1").Each(func(i int, s *goquery.Selection) {

@@ -19,7 +19,7 @@ func (b Bing) GetName() string {
 }
 
 func (b Bing) GetImageLinks() ([]string, error) {
-	c := colly.NewCollector()
+	c := newCollector()
 	var imageLinks []string
 	var errs []error
 
