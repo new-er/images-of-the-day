@@ -3,10 +3,7 @@ package sources
 import (
 	"encoding/xml"
 	"errors"
-	"fmt"
-	"io"
-	"net/http"
-	"os"
+	"time"
 
 	"github.com/gocolly/colly"
 )
@@ -20,6 +17,11 @@ func (u Nasa) GetName() string {
 
 func (u Nasa) GetImageLinks() ([]string, error) {
 	c := colly.NewCollector()
+	c.Limit(&colly.LimitRule{
+		DomainGlob:  "*nasa.gov",
+		Delay:       5 * time.Second,
+	})
+	c.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
 	var imageLinks []string
 	var errs []error
 
@@ -43,50 +45,6 @@ func (u Nasa) GetImageLinks() ([]string, error) {
 		return nil, errors.Join(errs...)
 	}
 	return imageLinks, nil
-}
-
-func (u Nasa) SaveImages(destination string) error {
-	url := "https://www.nasa.gov/rss/dyn/lg_image_of_the_day.rss"
-	resp, err := http.Get(url)
-	if err != nil {
-		return err
-	}
-
-	defer resp.Body.Close()
-
-	nasaResponse := nasaResponse{}
-	err = xml.NewDecoder(resp.Body).Decode(&nasaResponse)
-	if err != nil {
-		return err
-	}
-
-	downloadErrors := []error{}
-	for i, item := range nasaResponse.Channel.Items {
-		file, err := os.Create(fmt.Sprintf("%s/nasa_%d.jpg", destination, i))
-		if err != nil {
-			downloadErrors = append(downloadErrors, err)
-			continue
-		}
-
-		resp, err := http.Get(item.Enclosure.URL)
-		if err != nil {
-			downloadErrors = append(downloadErrors, err)
-			continue
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			downloadErrors = append(downloadErrors, errors.New("Error"))
-			continue
-		}
-
-		_, err = io.Copy(file, resp.Body)
-		if err != nil {
-			downloadErrors = append(downloadErrors, err)
-			continue
-		}
-	}
-
-	return nil
 }
 
 type nasaResponse struct {

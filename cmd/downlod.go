@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"images-of-the-day/sources"
 	"io"
@@ -64,32 +65,42 @@ func run() {
 	}
 
 	for _, source := range s {
-		links, err := source.GetImageLinks()
+		println("Downloading images from", source.GetName())
+		err := downloadImagesFromSource(date, source)
 		if err != nil {
-			println(err.Error())
+			println("Error downloading images from", source.GetName(), ":", err.Error())
+			continue
 		}
-		for i, link := range links {
-			response, err := http.Get(link)
-			if err != nil {
-				println(err.Error())
-				continue
-			}
-			defer response.Body.Close()
-
-			fileName := fmt.Sprintf("%s/%s_%s_%d.jpg", destinationDir, date, source.GetName(), i)
-			f, err := os.Create(fileName)
-			if err != nil {
-				println(err.Error())
-				continue
-			}
-			defer f.Close()
-
-			_, err = io.Copy(f, response.Body)
-			if err != nil {
-				println(err.Error())
-				continue
-			}
-			println("Downloaded", fileName)
-		}
+		println("Downloaded images from", source.GetName())
 	}
+}
+
+func downloadImagesFromSource(imagePrefix string, source sources.Source) error{
+	links, err := source.GetImageLinks()
+	if err != nil {
+		return errors.Join(errors.New("failed to get image links"), err)
+	}
+
+	for i, link := range links {
+		time.Sleep(5 * time.Second)
+		response, err := http.Get(link)
+		if err != nil {
+			return err
+		}
+		defer response.Body.Close()
+
+		fileName := fmt.Sprintf("%s/%s_%s_%d.jpg", destinationDir, imagePrefix, source.GetName(), i)
+		f, err := os.Create(fileName)
+		if err != nil {
+			return errors.Join(errors.New("failed to create file"), err)
+		}
+		defer f.Close()
+
+		_, err = io.Copy(f, response.Body)
+		if err != nil {
+			return errors.Join(errors.New("failed to copy response body"), err)
+		}
+		println("Downloaded", fileName)
+	}
+	return nil
 }
