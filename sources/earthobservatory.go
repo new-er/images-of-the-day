@@ -36,7 +36,7 @@ func (e EarthObservatory) GetImageLinks() ([]string, error) {
 			return
 		}
 		for _, item := range earthObservatoryResponse.Channel.Items {
-			c := colly.NewCollector()
+			c := newCollector()
 			c.OnHTML("div", func(e *colly.HTMLElement) {
 				if e.Attr("class") == "panel-image" {
 					e.DOM.ChildrenFiltered("a").Each(func(i int, s *goquery.Selection) {
