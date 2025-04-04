@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"context"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -23,16 +24,19 @@ func (e EarthObservatory) GetName() string {
 	return "EarthObservatory"
 }
 
-func (e EarthObservatory) GetImageLinks() ([]string, error) {
+func (e EarthObservatory) GetImageLinks(ctx context.Context) chan Result[string] {
 	c := newCollector()
-	var imageLinks []string
-	var errs []error
+	imageLinksSlice := []string{}
+	results := make(chan Result[string], 10)
 
 	c.OnResponse(func(r *colly.Response) {
 		earthObservatoryResponse := earthObservatoryResponse{}
 		err := xml.Unmarshal(r.Body, &earthObservatoryResponse)
 		if err != nil {
-			errs = append(errs, err)
+			select {
+			case results <- Result[string]{Err: fmt.Errorf("failed to unmarshal Earth Observatory response: %w", err)}:
+			case <-ctx.Done():
+			}
 			return
 		}
 		for _, item := range earthObservatoryResponse.Channel.Items {
@@ -49,14 +53,22 @@ func (e EarthObservatory) GetImageLinks() ([]string, error) {
 						}
 						val, exists := s.Attr("href")
 						if !exists {
-							errs = append(errs, errors.New("href attribute not found"))
+							select {
+							case results <- Result[string]{Err: errors.New("href attribute not found")}:
+							case <-ctx.Done():
+							}
 							return
 						}
 
-						if slices.Contains(imageLinks, val) {
+						if slices.Contains(imageLinksSlice, val) {
 							return
 						}
-						imageLinks = append(imageLinks, val)
+						select {
+						case results <- Result[string]{Value: val}:
+						case <-ctx.Done():
+							return
+						}
+						imageLinksSlice = append(imageLinksSlice, val)
 					})
 				}
 			})
@@ -64,14 +76,18 @@ func (e EarthObservatory) GetImageLinks() ([]string, error) {
 		}
 	})
 
-	err := c.Visit("https://earthobservatory.nasa.gov/feeds/earth-observatory.rss")
-	if err != nil {
-		return nil, err
-	}
-	if len(errs) > 0 {
-		return imageLinks, errors.Join(errs...)
-	}
-	return imageLinks, nil
+	go func() {
+		defer close(results)
+		err := c.Visit("https://earthobservatory.nasa.gov/feeds/earth-observatory.rss")
+		if err != nil {
+			select {
+			case results <- Result[string]{Err: fmt.Errorf("failed to visit Earth Observatory RSS feed: %w", err)}:
+			case <-ctx.Done():
+			}
+			return
+		}
+	}()
+	return results
 }
 
 func (e EarthObservatory) SaveImages(destination string) error {

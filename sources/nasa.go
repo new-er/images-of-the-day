@@ -1,9 +1,9 @@
 package sources
 
 import (
+	"context"
 	"encoding/xml"
-	"errors"
-	"time"
+	"fmt"
 
 	"github.com/gocolly/colly"
 )
@@ -15,31 +15,42 @@ func (u Nasa) GetName() string {
 	return "Nasa"
 }
 
-func (u Nasa) GetImageLinks() ([]string, error) {
+func (u Nasa) GetImageLinks(ctx context.Context) chan Result[string] {
 	c := newCollector()
-	var imageLinks []string
-	var errs []error
+	results := make(chan Result[string], 10)
 
 	c.OnResponse(func(r *colly.Response) {
 		nasaResponse := nasaResponse{}
 		err := xml.Unmarshal(r.Body, &nasaResponse)
 		if err != nil {
-			errs = append(errs, err)
+			select {
+			case results <- Result[string]{Err: fmt.Errorf("failed to unmarshal NASA response: %w", err)}:
+			case <-ctx.Done():
+			}
 			return
 		}
 		for _, item := range nasaResponse.Channel.Items {
-			imageLinks = append(imageLinks, item.Enclosure.URL)
+			select {
+			case results <- Result[string]{Value: item.Enclosure.URL}:
+			case <-ctx.Done():
+				return
+			}
 		}
 	})
 
-	err := c.Visit("https://www.nasa.gov/rss/dyn/lg_image_of_the_day.rss")
-	if err != nil {
-		return nil, err
-	}
-	if len(errs) > 0 {
-		return nil, errors.Join(errs...)
-	}
-	return imageLinks, nil
+	go func() {
+		defer close(results)
+		err := c.Visit("https://www.nasa.gov/rss/dyn/lg_image_of_the_day.rss")
+
+		if err != nil {
+			select {
+			case results <- Result[string]{Err: fmt.Errorf("failed to visit NASA RSS feed: %w", err)}:
+			case <-ctx.Done():
+			}
+			return
+		}
+	}()
+	return results
 }
 
 type nasaResponse struct {

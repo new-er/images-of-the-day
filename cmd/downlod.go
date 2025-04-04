@@ -1,12 +1,10 @@
 package cmd
 
 import (
-	"errors"
-	"fmt"
+	"context"
 	"images-of-the-day/sources"
-	"io"
-	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -22,7 +20,8 @@ var downloadCmd = &cobra.Command{
 	Short: "Download images of the day from various sources",
 
 	Run: func(cmd *cobra.Command, args []string) {
-		run()
+		ctx := context.Background()
+		run(ctx)
 	},
 }
 
@@ -42,7 +41,7 @@ func init() {
 		"Sources to download images from")
 }
 
-func run() {
+func run(ctx context.Context) {
 	s := []sources.Source{}
 	for _, source := range sourceArgs {
 		switch source {
@@ -64,43 +63,26 @@ func run() {
 		os.MkdirAll(destinationDir, os.ModePerm)
 	}
 
-	for _, source := range s {
+	resultChannels := make([]chan sources.Result[string], len(s))
+	for i, source := range s {
 		println("Downloading images from", source.GetName())
-		err := downloadImagesFromSource(date, source)
-		if err != nil {
-			println("Error downloading images from", source.GetName(), ":", err.Error())
-			continue
-		}
-		println("Downloaded images from", source.GetName())
-	}
-}
-
-func downloadImagesFromSource(imagePrefix string, source sources.Source) error{
-	links, err := source.GetImageLinks()
-	if err != nil {
-		return errors.Join(errors.New("failed to get image links"), err)
+		resultChannel := sources.DownloadImages(source, ctx, destinationDir, date)
+		resultChannels[i] = resultChannel
 	}
 
-	for i, link := range links {
-		time.Sleep(5 * time.Second)
-		response, err := http.Get(link)
-		if err != nil {
-			return err
-		}
-		defer response.Body.Close()
-
-		fileName := fmt.Sprintf("%s/%s_%s_%d.jpg", destinationDir, imagePrefix, source.GetName(), i)
-		f, err := os.Create(fileName)
-		if err != nil {
-			return errors.Join(errors.New("failed to create file"), err)
-		}
-		defer f.Close()
-
-		_, err = io.Copy(f, response.Body)
-		if err != nil {
-			return errors.Join(errors.New("failed to copy response body"), err)
-		}
-		println("Downloaded", fileName)
+	wg := &sync.WaitGroup{}
+	wg.Add(len(s))
+	for i, resultChannel := range resultChannels {
+		go func(i int, resultChannel chan sources.Result[string]) {
+			defer wg.Done()
+			for result := range resultChannel {
+				if result.Err != nil {
+					println("Error in source:", s[i].GetName(), result.Err.Error())
+					continue
+				}
+				println(result.Value)
+			}
+		}(i, resultChannel)
 	}
-	return nil
+	wg.Wait()
 }

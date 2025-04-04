@@ -1,6 +1,8 @@
 package sources
 
 import (
+	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -18,9 +20,10 @@ func (a Apod) GetName() string {
 	return "Apod"
 }
 
-func (a Apod) GetImageLinks() ([]string, error) {
+func (a Apod) GetImageLinks(ctx context.Context) chan Result[string] {
 	c := newCollector()
-	l := []string{}
+	results := make(chan Result[string], 10)
+
 	c.OnHTML("center", func(e *colly.HTMLElement) {
 		hasHeader := false
 		e.DOM.ChildrenFiltered("h1").Each(func(i int, s *goquery.Selection) {
@@ -46,16 +49,28 @@ func (a Apod) GetImageLinks() ([]string, error) {
 				if link[0] == '/' || !httpRegExp.MatchString(`^http`) {
 					link = "https://apod.nasa.gov/apod/" + link
 				}
-				l = append(l, link)
+				select {
+				case results <- Result[string]{Value: link}:
+				case <-ctx.Done():
+					return
+				}
 			})
 		})
 	})
 
-	err := c.Visit("https://apod.nasa.gov/apod/astropix.html")
-	if err != nil {
-		return nil, err
-	}
-	return l, nil
+	go func() {
+		defer close(results)
+
+		err := c.Visit("https://apod.nasa.gov/apod/astropix.html")
+		if err != nil {
+			select {
+			case results <- Result[string]{Err: fmt.Errorf("failed to visit Apod: %w", err)}:
+			case <-ctx.Done():
+			}
+			return
+		}
+	}()
+	return results
 }
 
 func (a Apod) SaveImages(destination string) error {

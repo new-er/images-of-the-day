@@ -1,14 +1,20 @@
 package sources
 
 import (
+	"context"
 	"time"
 
 	"github.com/gocolly/colly"
 )
 
+type Result[T any] struct {
+	Value T
+	Err    error
+}
+
 type Source interface {
 	GetName() string
-	GetImageLinks() ([]string, error)
+	GetImageLinks(ctx context.Context) chan Result[string]
 }
 
 func newCollector() *colly.Collector {
