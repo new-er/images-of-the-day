@@ -2,11 +2,11 @@ package cmd
 
 import (
 	"context"
-	"images-of-the-day/sources"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/new-er/images-of-the-day/sources"
 	"github.com/spf13/cobra"
 )
 

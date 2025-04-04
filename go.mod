@@ -1,4 +1,4 @@
-module images-of-the-day
+module github.com/new-er/images-of-the-day
 
 go 1.24.1
 

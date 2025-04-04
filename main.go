@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
-	"images-of-the-day/cmd"
 	"os"
+
+	"github.com/new-er/images-of-the-day/cmd"
 )
 
 func main() {
