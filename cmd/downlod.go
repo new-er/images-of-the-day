@@ -11,8 +11,9 @@ import (
 )
 
 var (
-	destinationDir string
-	sourceArgs     []string
+	destinationDir   string
+	sourceArgs       []string
+	removeOtherFiles bool
 )
 
 var downloadCmd = &cobra.Command{
@@ -39,6 +40,13 @@ func init() {
 		"s",
 		[]string{"bing", "nasa", "apod", "earth-observatory", "epod"},
 		"Sources to download images from")
+
+	downloadCmd.Flags().BoolVarP(
+		&removeOtherFiles,
+		"remove-other-files",
+		"r",
+		false,
+		"Remove other files in the destination directory")
 }
 
 func run(ctx context.Context) {
@@ -63,26 +71,69 @@ func run(ctx context.Context) {
 		os.MkdirAll(destinationDir, os.ModePerm)
 	}
 
-	resultChannels := make([]chan sources.Result[string], len(s))
+	resultChannels := make([]chan sources.Result[sources.DownloadedImage], len(s))
 	for i, source := range s {
 		println("Downloading images from", source.GetName())
 		resultChannel := sources.DownloadImages(source, ctx, destinationDir, date)
 		resultChannels[i] = resultChannel
 	}
 
+	downloadedImagesChannel := make(chan sources.DownloadedImage, 10)
+
 	wg := &sync.WaitGroup{}
 	wg.Add(len(s))
 	for i, resultChannel := range resultChannels {
-		go func(i int, resultChannel chan sources.Result[string]) {
+		go func(i int, resultChannel chan sources.Result[sources.DownloadedImage]) {
 			defer wg.Done()
 			for result := range resultChannel {
 				if result.Err != nil {
 					println("Error in source:", s[i].GetName(), result.Err.Error())
 					continue
 				}
-				println(result.Value)
+				println(result.Value.Message, result.Value.FilePath)
+				downloadedImagesChannel <- result.Value
 			}
 		}(i, resultChannel)
 	}
+
+	downloadedImages := []sources.DownloadedImage{}
+	go func() {
+		for image := range downloadedImagesChannel {
+			downloadedImages = append(downloadedImages, image)
+		}
+	}()
+
 	wg.Wait()
+
+	if removeOtherFiles {
+		allFiles, err := os.ReadDir(destinationDir)
+		if err != nil {
+			println("Error reading directory:", err.Error())
+			return
+		}
+		for _, file := range allFiles {
+			if file.IsDir() {
+				continue
+			}
+			fileName := file.Name()
+			filePath := destinationDir + "/" + fileName
+
+			found := false
+			for _, downloadedImage := range downloadedImages {
+				if filePath == downloadedImage.FilePath {
+					found = true
+					break
+				}
+			}
+			if !found {
+				println("Deleting file:", fileName)
+				err := os.Remove(filePath)
+				if err != nil {
+					println("Error deleting file:", fileName, err.Error())
+				} else {
+					println("Deleted file:", fileName)
+				}
+			}
+		}
+	}
 }

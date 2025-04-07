@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/xml"
 	"fmt"
+	"time"
 
 	"github.com/gocolly/colly"
 )
@@ -30,10 +31,13 @@ func (u Nasa) GetImageLinks(ctx context.Context) chan Result[string] {
 			return
 		}
 		for _, item := range nasaResponse.Channel.Items {
-			select {
-			case results <- Result[string]{Value: item.Enclosure.URL}:
-			case <-ctx.Done():
-				return
+			pubDate, err := time.Parse("Mon, 02 Jan 2006 15:04 MST", item.PubDate)
+			if err != nil {
+				results <- Result[string]{Err: fmt.Errorf("failed to parse pubDate: %w", err)}
+				continue
+			}
+			if pubDate.Before(time.Now().Add(-48 * time.Hour)) {
+				continue
 			}
 		}
 	})
@@ -63,6 +67,7 @@ type channel struct {
 
 type item struct {
 	Enclosure enclosure `xml:"enclosure"`
+	PubDate   string     `xml:"pubDate"`
 }
 
 type enclosure struct {
