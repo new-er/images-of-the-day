@@ -16,5 +16,4 @@ func Execute() error {
 func init() {
 	cobra.OnInitialize()
 	rootCmd.AddCommand(downloadCmd)
-
 }

@@ -80,11 +80,20 @@ type DownloadedImage struct {
 }
 
 func downloadImage(link string, destination string) error {
-	response, err := http.Get(link)
+	client := http.Client{
+		Transport: &http.Transport{},
+	}
+	req, err := http.NewRequest("GET", link, nil)
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36")
+
+	res, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
 
 	f, err := os.Create(destination)
 	if err != nil {
@@ -92,7 +101,7 @@ func downloadImage(link string, destination string) error {
 	}
 	defer f.Close()
 
-	_, err = io.Copy(f, response.Body)
+	_, err = io.Copy(f, res.Body)
 	if err != nil {
 		return err
 	}

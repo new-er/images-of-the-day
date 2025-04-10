@@ -54,15 +54,15 @@ func run(ctx context.Context) {
 	for _, source := range sourceArgs {
 		switch source {
 		case "bing":
-			s = append(s, sources.Bing{})
+			//s = append(s, sources.Bing{})
 		case "nasa":
-			s = append(s, sources.Nasa{})
+			//s = append(s, sources.Nasa{})
 		case "apod":
-			s = append(s, sources.Apod{})
+			//s = append(s, sources.Apod{})
 		case "earth-observatory":
 			s = append(s, sources.EarthObservatory{})
 		case "epod":
-			s = append(s, sources.Epod{})
+			//s = append(s, sources.Epod{})
 		}
 	}
 
