@@ -3,6 +3,9 @@ package sources
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
 	"regexp"
 	"strings"
 
@@ -17,12 +20,9 @@ func (a Apod) GetName() string {
 	return "Apod"
 }
 
-func (a Apod) GetImageLinks(ctx context.Context) chan ChannelResult[ImageLink] {
+func (a Apod) GetImageLinks(ctx context.Context) chan Result[string] {
 	c := newCollector()
-	results := make(chan ChannelResult[ImageLink], 10)
-
-	url := ""
-	description := ""
+	results := make(chan Result[string], 10)
 
 	c.OnHTML("center", func(e *colly.HTMLElement) {
 		hasHeader := false
@@ -49,61 +49,13 @@ func (a Apod) GetImageLinks(ctx context.Context) chan ChannelResult[ImageLink] {
 				if link[0] == '/' || !httpRegExp.MatchString(`^http`) {
 					link = "https://apod.nasa.gov/apod/" + link
 				}
-				url = link
+				select {
+				case results <- Result[string]{Value: link}:
+				case <-ctx.Done():
+					return
+				}
 			})
 		})
-
-		if url == "" {
-			return
-		}
-		if description == "" {
-			return
-		}
-
-		select {
-		case results <- ChannelResult[ImageLink]{
-			Value: ImageLink{
-				URL:         url,
-				Description: description,
-			},
-		}:
-		case <-ctx.Done():
-			return
-		}
-	})
-
-	c.OnHTML("p", func(e *colly.HTMLElement) {
-		hasExplanation := false
-
-		e.DOM.ChildrenFiltered("b").Each(func(i int, s *goquery.Selection) {
-			if strings.Contains(s.Text(), "Explanation:") {
-				hasExplanation = true
-			}
-		})
-
-		if !hasExplanation {
-			return
-		}
-
-		description = e.DOM.Text()
-
-		if url == "" {
-			return
-		}
-		if description == "" {
-			return
-		}
-
-		select {
-		case results <- ChannelResult[ImageLink]{
-			Value: ImageLink{
-				URL:         url,
-				Description: description,
-			},
-		}:
-		case <-ctx.Done():
-			return
-		}
 	})
 
 	go func() {
@@ -112,11 +64,51 @@ func (a Apod) GetImageLinks(ctx context.Context) chan ChannelResult[ImageLink] {
 		err := c.Visit("https://apod.nasa.gov/apod/astropix.html")
 		if err != nil {
 			select {
-			case results <- ChannelResult[ImageLink]{Err: fmt.Errorf("failed to visit Apod: %w", err)}:
+			case results <- Result[string]{Err: fmt.Errorf("failed to visit Apod: %w", err)}:
 			case <-ctx.Done():
 			}
 			return
 		}
 	}()
 	return results
+}
+
+func (a Apod) SaveImages(destination string) error {
+	url := "https://apod.nasa.gov/apod/astropix.html"
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	bodyString := string(body)
+
+	expression := regexp.MustCompile("source src=\".*\"")
+	tagText := expression.FindString(bodyString)
+	srcText := tagText[12 : len(tagText)-1]
+
+	url = "https://apod.nasa.gov/apod/" + srcText
+	respImg, errImg := http.Get(url)
+	if errImg != nil {
+		return errImg
+	}
+	defer resp.Body.Close()
+
+	file, err := os.Create(destination + "/apod.mp4")
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(file, respImg.Body)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
