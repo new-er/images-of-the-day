@@ -42,7 +42,7 @@ func DownloadImages(source Source, ctx context.Context, destinationDir, imagePre
 			fileName = strings.ReplaceAll(fileName, "jpeg", "_jpeg")
 			fileName = strings.ReplaceAll(fileName, "png", "_png")
 			fileName = strings.ReplaceAll(fileName, "gif", "_gif")
-			fileName = fmt.Sprintf("%s_%s_%s.jpg", imagePrefix, source.GetName(), fileName)
+			fileName = fmt.Sprintf("%s_%s_%s.jpg", source.GetName(), imagePrefix, fileName)
 			filePath := fmt.Sprintf("%s/%s", destinationDir, fileName)
 
 			if _, err := os.Stat(filePath); err == nil {

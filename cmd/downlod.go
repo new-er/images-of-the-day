@@ -31,7 +31,7 @@ func init() {
 		&destinationDir,
 		"destination",
 		"d",
-		"~/Pictures",
+		"./_images",
 		"Destination directory for downloaded images")
 
 	downloadCmd.Flags().StringSliceVarP(
