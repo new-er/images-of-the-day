@@ -15,23 +15,25 @@ func (b Bing) GetName() string {
 	return "Bing"
 }
 
-func (b Bing) GetImageLinks(ctx context.Context) chan Result[string] {
+func (b Bing) GetImageLinks(ctx context.Context) chan ChannelResult[ImageLink] {
 	c := newCollector()
-	results := make(chan Result[string], 10)
+	results := make(chan ChannelResult[ImageLink], 10)
 
 	c.OnResponse(func(r *colly.Response) {
 		bingResponse := bingResponse{}
 		err := json.Unmarshal(r.Body, &bingResponse)
 		if err != nil {
 			select {
-			case results <- Result[string]{Err: fmt.Errorf("failed to unmarshal Bing response: %w", err)}:
+			case results <- ChannelResult[ImageLink]{Err: fmt.Errorf("failed to unmarshal Bing response: %w", err)}:
 			case <-ctx.Done():
 			}
 			return
 		}
 		for _, image := range bingResponse.Images {
 			select {
-			case results <- Result[string]{Value: "https://www.bing.com" + image.URL}:
+			case results <- ChannelResult[ImageLink]{Value: ImageLink{
+				URL:         "https://www.bing.com" + image.URL,
+				Description: image.Title}}:
 			case <-ctx.Done():
 				return
 			}
@@ -43,7 +45,7 @@ func (b Bing) GetImageLinks(ctx context.Context) chan Result[string] {
 		err := c.Visit("https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1")
 		if err != nil {
 			select {
-			case results <- Result[string]{Err: fmt.Errorf("failed to visit Bing: %w", err)}:
+			case results <- ChannelResult[ImageLink]{Err: fmt.Errorf("failed to visit Bing: %w", err)}:
 			case <-ctx.Done():
 			}
 			return
@@ -57,5 +59,6 @@ type bingResponse struct {
 }
 
 type bingImage struct {
-	URL string `json:"url"`
+	URL   string `json:"url"`
+	Title string `json:"title"`
 }

@@ -38,7 +38,7 @@ func init() {
 		&sourceArgs,
 		"sources",
 		"s",
-		[]string{"bing", "nasa", "apod", "earth-observatory", "epod"},
+		[]string{"nasa"}, //{"bing", "nasa", "apod", "earth-observatory", "epod"},
 		"Sources to download images from")
 
 	downloadCmd.Flags().BoolVarP(
@@ -71,7 +71,7 @@ func run(ctx context.Context) {
 		os.MkdirAll(destinationDir, os.ModePerm)
 	}
 
-	resultChannels := make([]chan sources.Result[sources.DownloadedImage], len(s))
+	resultChannels := make([]chan sources.ChannelResult[sources.DownloadedImage], len(s))
 	for i, source := range s {
 		println("Downloading images from", source.GetName())
 		resultChannel := sources.DownloadImages(source, ctx, destinationDir, date)
@@ -83,7 +83,7 @@ func run(ctx context.Context) {
 	wg := &sync.WaitGroup{}
 	wg.Add(len(s))
 	for i, resultChannel := range resultChannels {
-		go func(i int, resultChannel chan sources.Result[sources.DownloadedImage]) {
+		go func(i int, resultChannel chan sources.ChannelResult[sources.DownloadedImage]) {
 			defer wg.Done()
 			for result := range resultChannel {
 				if result.Err != nil {

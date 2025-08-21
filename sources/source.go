@@ -7,14 +7,14 @@ import (
 	"github.com/gocolly/colly"
 )
 
-type Result[T any] struct {
-	Value T
-	Err    error
+type ImageLink struct {
+	URL	string
+	Description string
 }
 
 type Source interface {
 	GetName() string
-	GetImageLinks(ctx context.Context) chan Result[string]
+	GetImageLinks(ctx context.Context) chan ChannelResult[ImageLink]
 }
 
 func newCollector() *colly.Collector {
