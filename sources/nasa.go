@@ -16,16 +16,16 @@ func (u Nasa) GetName() string {
 	return "Nasa"
 }
 
-func (u Nasa) GetImageLinks(ctx context.Context) chan Result[string] {
+func (u Nasa) GetImageLinks(ctx context.Context) chan Result[ImageDescription] {
 	c := newCollector()
-	results := make(chan Result[string], 10)
+	results := make(chan Result[ImageDescription], 10)
 
 	c.OnResponse(func(r *colly.Response) {
 		nasaResponse := nasaResponse{}
 		err := xml.Unmarshal(r.Body, &nasaResponse)
 		if err != nil {
 			select {
-			case results <- Result[string]{Err: fmt.Errorf("failed to unmarshal NASA response: %w", err)}:
+			case results <- Result[ImageDescription]{Err: fmt.Errorf("failed to unmarshal NASA response: %w", err)}:
 			case <-ctx.Done():
 			}
 			return
@@ -33,11 +33,17 @@ func (u Nasa) GetImageLinks(ctx context.Context) chan Result[string] {
 		for _, item := range nasaResponse.Channel.Items {
 			pubDate, err := time.Parse("Mon, 02 Jan 2006 15:04 MST", item.PubDate)
 			if err != nil {
-				results <- Result[string]{Err: fmt.Errorf("failed to parse pubDate: %w", err)}
+				results <- Result[ImageDescription]{Err: fmt.Errorf("failed to parse pubDate: %w", err)}
 				continue
 			}
 			if pubDate.Before(time.Now().Add(-48 * time.Hour)) {
 				continue
+			}
+
+			select {
+			case results <- Result[ImageDescription]{Value: ImageDescription{ImageUrl: item.Enclosure.URL, Title: item.Title, PageUrl: item.Link}}:
+			case <-ctx.Done():
+				return
 			}
 		}
 	})
@@ -48,7 +54,7 @@ func (u Nasa) GetImageLinks(ctx context.Context) chan Result[string] {
 
 		if err != nil {
 			select {
-			case results <- Result[string]{Err: fmt.Errorf("failed to visit NASA RSS feed: %w", err)}:
+			case results <- Result[ImageDescription]{Err: fmt.Errorf("failed to visit NASA RSS feed: %w", err)}:
 			case <-ctx.Done():
 			}
 			return
@@ -66,8 +72,10 @@ type channel struct {
 }
 
 type item struct {
+	Title     string    `xml:"title"`
 	Enclosure enclosure `xml:"enclosure"`
-	PubDate   string     `xml:"pubDate"`
+	PubDate   string    `xml:"pubDate"`
+	Link      string    `xml:"link"`
 }
 
 type enclosure struct {

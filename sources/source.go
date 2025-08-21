@@ -9,12 +9,18 @@ import (
 
 type Result[T any] struct {
 	Value T
-	Err    error
+	Err   error
+}
+
+type ImageDescription struct {
+	ImageUrl string `json:"image_url"`
+	PageUrl  string `json:"page_url"`
+	Title    string `json:"title"`
 }
 
 type Source interface {
 	GetName() string
-	GetImageLinks(ctx context.Context) chan Result[string]
+	GetImageLinks(ctx context.Context) chan Result[ImageDescription]
 }
 
 func newCollector() *colly.Collector {

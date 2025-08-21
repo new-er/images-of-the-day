@@ -2,6 +2,7 @@ package sources
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,12 +26,12 @@ func DownloadImages(source Source, ctx context.Context, destinationDir, imagePre
 				downloadImagesResultChan <- Result[DownloadedImage]{Err: fmt.Errorf("error getting image link: %w", result.Err)}
 				continue
 			}
-			if slices.Contains(downloadedImages, result.Value) {
+			if slices.Contains(downloadedImages, result.Value.ImageUrl) {
 				continue
 			}
-			downloadedImages = append(downloadedImages, result.Value)
+			downloadedImages = append(downloadedImages, result.Value.ImageUrl)
 
-			linkParts := strings.Split(result.Value, "/")
+			linkParts := strings.Split(result.Value.ImageUrl, "/")
 			fileName := linkParts[len(linkParts)-1]
 			fileName = strings.ReplaceAll(fileName, ":", "_")
 			fileName = strings.ReplaceAll(fileName, "?", "_")
@@ -47,7 +48,7 @@ func DownloadImages(source Source, ctx context.Context, destinationDir, imagePre
 
 			if _, err := os.Stat(filePath); err == nil {
 				downloadedImage := DownloadedImage{
-					ImageLink: result.Value,
+					ImageLink: result.Value.ImageUrl,
 					FilePath:  filePath,
 					Message:   fmt.Sprintf("image already exists: %s", filePath),
 				}
@@ -55,19 +56,29 @@ func DownloadImages(source Source, ctx context.Context, destinationDir, imagePre
 				continue
 			}
 
-			err := downloadImage(result.Value, filePath)
+			err := downloadImage(result.Value.ImageUrl, filePath)
 
 			if err != nil {
 				downloadImagesResultChan <- Result[DownloadedImage]{Err: fmt.Errorf("error downloading image: %w", err)}
-			} else {
-				downloadedImage := DownloadedImage{
-					ImageLink: result.Value,
-					FilePath:  filePath,
-					Message:   fmt.Sprintf("image downloaded: %s", filePath),
-				}
-				downloadImagesResultChan <- Result[DownloadedImage]{Value: downloadedImage}
 				time.Sleep(2 * time.Second)
+				continue
 			}
+
+			err = writeImageDescription(filePath+".json", result.Value)
+			if err != nil {
+				downloadImagesResultChan <- Result[DownloadedImage]{Err: fmt.Errorf("error saving image description: %w", err)}
+				time.Sleep(2 * time.Second)
+				continue
+			}
+
+			downloadedImage := DownloadedImage{
+				ImageLink: result.Value.ImageUrl,
+				FilePath:  filePath,
+				Message:   fmt.Sprintf("image downloaded: %s", filePath),
+			}
+			downloadImagesResultChan <- Result[DownloadedImage]{Value: downloadedImage}
+			time.Sleep(2 * time.Second)
+
 		}
 	}()
 	return downloadImagesResultChan
@@ -106,4 +117,12 @@ func downloadImage(link string, destination string) error {
 		return err
 	}
 	return nil
+}
+
+func writeImageDescription(destination string, description ImageDescription) error {
+	data, err := json.Marshal(description)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(destination, data, 0644)
 }

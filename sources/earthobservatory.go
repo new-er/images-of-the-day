@@ -20,17 +20,17 @@ func (e EarthObservatory) GetName() string {
 	return "EarthObservatory"
 }
 
-func (e EarthObservatory) GetImageLinks(ctx context.Context) chan Result[string] {
+func (e EarthObservatory) GetImageLinks(ctx context.Context) chan Result[ImageDescription] {
 	c := newCollector()
 	imageLinksSlice := []string{}
-	results := make(chan Result[string], 10)
+	results := make(chan Result[ImageDescription], 10)
 
 	c.OnResponse(func(r *colly.Response) {
 		earthObservatoryResponse := earthObservatoryResponse{}
 		err := xml.Unmarshal(r.Body, &earthObservatoryResponse)
 		if err != nil {
 			select {
-			case results <- Result[string]{Err: fmt.Errorf("failed to unmarshal Earth Observatory response: %w", err)}:
+			case results <- Result[ImageDescription]{Err: fmt.Errorf("failed to unmarshal Earth Observatory response: %w", err)}:
 			case <-ctx.Done():
 			}
 			return
@@ -38,7 +38,7 @@ func (e EarthObservatory) GetImageLinks(ctx context.Context) chan Result[string]
 		for _, item := range earthObservatoryResponse.Channel.Items {
 			pubDate, err := time.Parse("Mon, 02 Jan 2006 15:04:05 -0700", item.PubDate)
 			if err != nil {
-				results <- Result[string]{Err: fmt.Errorf("failed to parse pubDate: %w", err)}
+				results <- Result[ImageDescription]{Err: fmt.Errorf("failed to parse pubDate: %w", err)}
 				continue
 			}
 			if pubDate.Before(time.Now().Add(-48 * time.Hour)) {
@@ -58,7 +58,7 @@ func (e EarthObservatory) GetImageLinks(ctx context.Context) chan Result[string]
 						val, exists := s.Attr("href")
 						if !exists {
 							select {
-							case results <- Result[string]{Err: errors.New("href attribute not found")}:
+							case results <- Result[ImageDescription]{Err: errors.New("href attribute not found")}:
 							case <-ctx.Done():
 							}
 							return
@@ -68,7 +68,7 @@ func (e EarthObservatory) GetImageLinks(ctx context.Context) chan Result[string]
 							return
 						}
 						select {
-						case results <- Result[string]{Value: val}:
+						case results <- Result[ImageDescription]{Value: ImageDescription{ImageUrl: val, Title: item.Title, PageUrl: item.Guid}}:
 						case <-ctx.Done():
 							return
 						}
@@ -85,7 +85,7 @@ func (e EarthObservatory) GetImageLinks(ctx context.Context) chan Result[string]
 		err := c.Visit("https://earthobservatory.nasa.gov/feeds/earth-observatory.rss")
 		if err != nil {
 			select {
-			case results <- Result[string]{Err: fmt.Errorf("failed to visit Earth Observatory RSS feed: %w", err)}:
+			case results <- Result[ImageDescription]{Err: fmt.Errorf("failed to visit Earth Observatory RSS feed: %w", err)}:
 			case <-ctx.Done():
 			}
 			return
@@ -93,7 +93,6 @@ func (e EarthObservatory) GetImageLinks(ctx context.Context) chan Result[string]
 	}()
 	return results
 }
-
 
 type earthObservatoryResponse struct {
 	Channel EarthObservatoryChannel `xml:"channel"`
@@ -104,7 +103,8 @@ type EarthObservatoryChannel struct {
 }
 
 type EarthObservatoryItem struct {
-	Title string `xml:"title"`
-	Link  string `xml:"link"`
+	Title   string `xml:"title"`
+	Link    string `xml:"link"`
 	PubDate string `xml:"pubDate"`
+	Guid    string `xml:"guid"`
 }
