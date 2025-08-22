@@ -38,7 +38,7 @@ func init() {
 		&sourceArgs,
 		"sources",
 		"s",
-		[]string{"nasa"}, //"apod", "bing", "earth-observatory", "epod", "nasa"},
+		[]string{"apod", "bing", "earth-observatory", "epod", "nasa"},
 		"Sources to download images from")
 
 	downloadCmd.Flags().BoolVarP(
