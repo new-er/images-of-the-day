@@ -90,7 +90,7 @@ func run(ctx context.Context) {
 					println("Error in source:", s[i].GetName(), result.Err.Error())
 					continue
 				}
-				println(result.Value.Message, result.Value.FilePath)
+				println(s[i].GetName(), ":", result.Value.ImageLink, "->", result.Value.FilePath)
 				downloadedImagesChannel <- result.Value
 			}
 		}(i, resultChannel)

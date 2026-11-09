@@ -5,11 +5,9 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
-	"slices"
-
-	"github.com/PuerkitoBio/goquery"
 	"github.com/gocolly/colly"
 )
 
@@ -38,51 +36,54 @@ func (e EarthObservatory) GetImageLinks(ctx context.Context) chan Result[ImageDe
 		for _, item := range earthObservatoryResponse.Channel.Items {
 			pubDate, err := time.Parse("Mon, 02 Jan 2006 15:04:05 -0700", item.PubDate)
 			if err != nil {
-				results <- Result[ImageDescription]{Err: fmt.Errorf("failed to parse pubDate: %w", err)}
+				select {
+				case results <- Result[ImageDescription]{Err: fmt.Errorf("failed to parse pubDate: %w", err)}:
+				case <-ctx.Done():
+				}
+				return
+			}
+			if pubDate.Before(time.Now().Add(-7 * 24 * time.Hour)) {
 				continue
 			}
-			if pubDate.Before(time.Now().Add(-48 * time.Hour)) {
-				continue
-			}
-			c := newCollector()
-			c.OnHTML("div", func(e *colly.HTMLElement) {
-				if e.Attr("class") == "panel-image" {
-					e.DOM.ChildrenFiltered("a").Each(func(i int, s *goquery.Selection) {
-						targetV, existsTarget := s.Attr("target")
-						if !existsTarget {
-							return
-						}
-						if targetV != "_blank" {
-							return
-						}
-						val, exists := s.Attr("href")
-						if !exists {
-							select {
-							case results <- Result[ImageDescription]{Err: errors.New("href attribute not found")}:
-							case <-ctx.Done():
-							}
-							return
-						}
 
-						if slices.Contains(imageLinksSlice, val) {
-							return
-						}
-						select {
-						case results <- Result[ImageDescription]{Value: ImageDescription{ImageUrl: val, Title: item.Title, PageUrl: item.Guid}}:
-						case <-ctx.Done():
-							return
-						}
-						imageLinksSlice = append(imageLinksSlice, val)
-					})
+			imageUrl := ""
+			ic := newCollector()
+			ic.OnHTML("meta", func(e *colly.HTMLElement) {
+				if e.Attr("property") == "og:image" && imageUrl == "" {
+					imageUrl = e.Attr("content")
 				}
 			})
-			c.Visit(item.Link)
+			err = ic.Visit(item.Link)
+			if err != nil {
+				select {
+				case results <- Result[ImageDescription]{Err: fmt.Errorf("failed to visit Earth Observatory item: %w", err)}:
+				case <-ctx.Done():
+				}
+				return
+			}
+			if imageUrl == "" {
+				select {
+				case results <- Result[ImageDescription]{Err: errors.New("og:image not found")}:
+				case <-ctx.Done():
+				}
+				return
+			}
+
+			if slices.Contains(imageLinksSlice, imageUrl) {
+				continue
+			}
+			select {
+			case results <- Result[ImageDescription]{Value: ImageDescription{ImageUrl: imageUrl, Title: item.Title, PageUrl: item.Guid}}:
+			case <-ctx.Done():
+				return
+			}
+			imageLinksSlice = append(imageLinksSlice, imageUrl)
 		}
 	})
 
 	go func() {
 		defer close(results)
-		err := c.Visit("https://earthobservatory.nasa.gov/feeds/earth-observatory.rss")
+		err := c.Visit("https://science.nasa.gov/feed/earth-observatory/image-of-the-day")
 		if err != nil {
 			select {
 			case results <- Result[ImageDescription]{Err: fmt.Errorf("failed to visit Earth Observatory RSS feed: %w", err)}:

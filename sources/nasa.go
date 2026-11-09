@@ -36,7 +36,7 @@ func (u Nasa) GetImageLinks(ctx context.Context) chan Result[ImageDescription] {
 				results <- Result[ImageDescription]{Err: fmt.Errorf("failed to parse pubDate: %w", err)}
 				continue
 			}
-			if pubDate.Before(time.Now().Add(-48 * time.Hour)) {
+			if pubDate.Before(time.Now().Add(-7 * 24 * time.Hour)) {
 				continue
 			}
 
@@ -50,7 +50,7 @@ func (u Nasa) GetImageLinks(ctx context.Context) chan Result[ImageDescription] {
 
 	go func() {
 		defer close(results)
-		err := c.Visit("https://www.nasa.gov/rss/dyn/lg_image_of_the_day.rss")
+		err := c.Visit("https://www.nasa.gov/feeds/iotd-feed")
 
 		if err != nil {
 			select {

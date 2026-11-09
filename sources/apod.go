@@ -2,11 +2,12 @@ package sources
 
 import (
 	"context"
+	"encoding/xml"
+	"errors"
 	"fmt"
-	"regexp"
-	"strings"
+	"slices"
+	"time"
 
-	"github.com/PuerkitoBio/goquery"
 	"github.com/gocolly/colly"
 )
 
@@ -19,46 +20,73 @@ func (a Apod) GetName() string {
 
 func (a Apod) GetImageLinks(ctx context.Context) chan Result[ImageDescription] {
 	c := newCollector()
+	imageLinksSlice := []string{}
 	results := make(chan Result[ImageDescription], 10)
 
-	url := ""
-	title := ""
-
-	c.OnHTML("center", func(e *colly.HTMLElement) {
-		hasHeader := false
-		hasTitle := false
-		e.DOM.ChildrenFiltered("h1").Each(func(i int, s *goquery.Selection) {
-			if strings.Contains(s.Text(), "Astronomy Picture of the Day") {
-				hasHeader = true
+	c.OnResponse(func(r *colly.Response) {
+		apodResponse := apodResponse{}
+		err := xml.Unmarshal(r.Body, &apodResponse)
+		if err != nil {
+			select {
+			case results <- Result[ImageDescription]{Err: fmt.Errorf("failed to unmarshal Apod response: %w", err)}:
+			case <-ctx.Done():
 			}
-		})
-
-		e.DOM.ChildrenFiltered("b").Each(func(i int, s *goquery.Selection) {
-			if strings.Contains(s.Text(), "Image Credit") {
-				hasTitle = true
-			}
-		})
-
-		if hasHeader {
-			getImageUrl(e, func(s string) {
-				url = s
-				emitOnAllValuesFound(ctx, url, title, "https://apod.nasa.gov/apod/astropix.html", results)
-			})
+			return
 		}
+		for _, item := range apodResponse.Channel.Items {
+			pubDate, err := time.Parse("Mon, 02 Jan 2006 15:04:05 -0700", item.PubDate)
+			if err != nil {
+				select {
+				case results <- Result[ImageDescription]{Err: fmt.Errorf("failed to parse pubDate: %w", err)}:
+				case <-ctx.Done():
+				}
+				return
+			}
+			if pubDate.Before(time.Now().Add(-48 * time.Hour)) {
+				continue
+			}
 
-		if hasTitle {
-			title = getTitle(e)
-			emitOnAllValuesFound(ctx, url, title, "https://apod.nasa.gov/apod/astropix.html", results)
+			imageUrl := ""
+			ic := newCollector()
+			ic.OnHTML("meta", func(e *colly.HTMLElement) {
+				if e.Attr("property") == "og:image" && imageUrl == "" {
+					imageUrl = e.Attr("content")
+				}
+			})
+			err = ic.Visit(item.Link)
+			if err != nil {
+				select {
+				case results <- Result[ImageDescription]{Err: fmt.Errorf("failed to visit Apod item: %w", err)}:
+				case <-ctx.Done():
+				}
+				return
+			}
+			if imageUrl == "" {
+				select {
+				case results <- Result[ImageDescription]{Err: errors.New("og:image not found")}:
+				case <-ctx.Done():
+				}
+				return
+			}
+
+			if slices.Contains(imageLinksSlice, imageUrl) {
+				continue
+			}
+			select {
+			case results <- Result[ImageDescription]{Value: ImageDescription{ImageUrl: imageUrl, Title: item.Title, PageUrl: item.Link}}:
+			case <-ctx.Done():
+				return
+			}
+			imageLinksSlice = append(imageLinksSlice, imageUrl)
 		}
 	})
 
 	go func() {
 		defer close(results)
-
-		err := c.Visit("https://apod.nasa.gov/apod/astropix.html")
+		err := c.Visit("https://science.nasa.gov/feed/apod-basic/")
 		if err != nil {
 			select {
-			case results <- Result[ImageDescription]{Err: fmt.Errorf("failed to visit Apod: %w", err)}:
+			case results <- Result[ImageDescription]{Err: fmt.Errorf("failed to visit Apod feed: %w", err)}:
 			case <-ctx.Done():
 			}
 			return
@@ -67,6 +95,21 @@ func (a Apod) GetImageLinks(ctx context.Context) chan Result[ImageDescription] {
 	return results
 }
 
+type apodResponse struct {
+	Channel apodChannel `xml:"channel"`
+}
+
+type apodChannel struct {
+	Items []apodItem `xml:"item"`
+}
+
+type apodItem struct {
+	Title   string `xml:"title"`
+	Link    string `xml:"link"`
+	PubDate string `xml:"pubDate"`
+}
+
+// emitOnAllValuesFound is kept for the Epod source, which still references it.
 func emitOnAllValuesFound(ctx context.Context, imageUrl, title, pageUrl string, results chan Result[ImageDescription]) {
 	if imageUrl == "" {
 		return
@@ -76,33 +119,8 @@ func emitOnAllValuesFound(ctx context.Context, imageUrl, title, pageUrl string, 
 	}
 	select {
 	case results <- Result[ImageDescription]{Value: ImageDescription{
-		ImageUrl: imageUrl, Title: title, PageUrl: "https://apod.nasa.gov/apod/astropix.html"}}:
+		ImageUrl: imageUrl, Title: title, PageUrl: pageUrl}}:
 	case <-ctx.Done():
 		return
 	}
-}
-
-func getImageUrl(e *colly.HTMLElement, f func(string)) {
-	e.DOM.ChildrenFiltered("p").Each(func(i int, s *goquery.Selection) {
-		s.ChildrenFiltered("a").Each(func(i int, s *goquery.Selection) {
-			link, existsLink := s.Attr("href")
-			if !existsLink {
-				return
-			}
-			if !strings.Contains(link, "jpg") && !strings.Contains(link, "png") {
-				return
-			}
-			httpRegExp := regexp.MustCompile(`^http`)
-
-			if link[0] == '/' || !httpRegExp.MatchString(`^http`) {
-				link = "https://apod.nasa.gov/apod/" + link
-			}
-			f(link)
-		})
-	})
-}
-
-func getTitle(e *colly.HTMLElement) string {
-	element := e.DOM.ChildrenFiltered("b").Get(0)
-	return strings.Trim(element.FirstChild.Data, " ")
 }
